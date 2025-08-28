@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://beopjeong.github.io/sitemap.xml
