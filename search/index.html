@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>전문 검색 &middot; 법정 法頂</title>
+    <link rel="stylesheet" href="/pico.min.css" />
+    <script src="/alpine.min.js" defer></script>
+  </head>
+  <body>
+    <header class="container">
+      <nav>
+        <ul>
+          <li><strong>법정 法頂</strong></li>
+        </ul>
+        <ul>
+          <li><a href="/">소개 및 저서</a></li>
+          <li><a href="/search/">검색</a></li>
+        </ul>
+      </nav>
+      <hgroup>
+        <h1>전문 검색</h1>
+        <p></p>
+      </hgroup>
+    </header>
+    <main class="container">
+      <div x-data="{ query: '', limit: 20, data: [] }">
+        <form
+          @submit.prevent="data = queryData(query, limit)"
+          @input.debounce="$el.requestSubmit()"
+        >
+          <input
+            type="search"
+            name="search"
+            placeholder="검색"
+            aria-label="검색"
+            x-model="query"
+          />
+          <small
+            ><code>가을</code>은 <q>가을 ...</q>만 찾고 <code>가을*</code>은
+            <q>가을바람</q>도 찾습니다.
+            <a href="https://www.sqlite.org/fts5.html#full_text_query_syntax"
+              >더 보기</a
+            ></small
+          >
+        </form>
+        <template x-for="d in data">
+          <article>
+            <hgroup>
+              <h3 x-html="d.heading_highlight"></h3>
+              <p x-text="d.book"></p>
+            </hgroup>
+            <p x-html="d.content_snippet"></p>
+            <a x-bind:href='"/" + d.slug + "/"'>더 보기</a>
+          </article>
+        </template>
+      </div>
+
+      <script src="sqlite3.js"></script>
+      <script>
+        "use strict";
+        window.db = null;
+
+        function initializeDatabase(sqlite3) {
+          try {
+            fetch("beopjeong.db")
+              .then((res) => res.arrayBuffer())
+              .then(function (arrayBuffer) {
+                const p = sqlite3.wasm.allocFromTypedArray(arrayBuffer);
+                const db = new sqlite3.oo1.DB();
+                const rc = sqlite3.capi.sqlite3_deserialize(
+                  db.pointer,
+                  "main",
+                  p,
+                  arrayBuffer.byteLength,
+                  arrayBuffer.byteLength,
+                  sqlite3.capi.SQLITE_DESERIALIZE_FREEONCLOSE,
+                );
+                db.checkRc(rc);
+                window.db = db;
+              });
+          } catch (e) {
+            console.log("Error during database initialization:", e.message);
+          }
+          // Note: We DO NOT call db.close(). The connection stays open.
+        }
+
+        globalThis.sqlite3InitModule().then(initializeDatabase);
+
+        function queryData(query, limit) {
+          const resultRows = [];
+          if (query === "") {
+            return resultRows;
+          }
+          if (!db) {
+            console.log("Database is not initialized yet. Please wait.");
+            return resultRows;
+          }
+          try {
+            db.exec({
+              sql: `SELECT s.rowid, s.heading, s.book, s.slug, f.rank,
+highlight(sections_fts, 0, '<mark>', '</mark>') AS heading_highlight,
+snippet(sections_fts, 1, '<mark>', '</mark>', '...', 64) AS content_snippet
+FROM sections AS s JOIN sections_fts AS f ON s.rowid = f.rowid WHERE sections_fts MATCH ? ORDER BY rank LIMIT ?;`,
+              bind: [query, limit],
+              rowMode: "object",
+              resultRows: resultRows,
+            });
+          } catch (e) {
+            console.log("Query failed:", e.message);
+          }
+          return resultRows;
+        }
+      </script>
+    </main>
+  </body>
+</html>
